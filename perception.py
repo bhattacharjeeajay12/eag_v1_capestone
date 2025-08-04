@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Literal, Optional
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -7,111 +7,141 @@ from llm_provider import default_llm
 from memory import ConversationMemory
 import json
 
-
-class FlightSearch(BaseModel):
-    """Flight search parameters"""
-
-    departure_id: str = Field(..., description="The IATA code of the departure airport")
-    arrival_id: str = Field(..., description="The IATA code of the arrival airport")
-
-
-class HotelSearch(BaseModel):
-    """Hotel search parameters"""
-
-    location: str = Field(..., description="The location of the hotel")
-    adults: int = Field(1, description="The number of adults")
-
-
-class TravelSearch(BaseModel):
-    """Travel search parameters that can include flight, hotel, or both"""
-
-    search_type: Literal["flight", "hotel", "combined"] = Field(
-        ...,
-        description="Type of search to perform (flight, hotel, or combined for both)",
+class ProductAttributes(BaseModel):
+    """Common product attributes for both buy and return"""
+    color: Optional[str] = Field(None, description="Preferred color of the product if mentioned")
+    gender: Optional[Literal["male", "female", "unisex"]] = Field(
+        None, description="Gender for whom the product is intended"
     )
-    # Common fields
-    currency: str = Field(
-        "USD", description="The currency of the prices (USD, EUR, GBP, etc.)"
+    age: Optional[int] = Field(
+        None, description="Numeric age if mentioned (e.g., 5 for a 5-year-old child)"
     )
-    start_date: str = Field(
-        ...,
-        description="The start date in YYYY-MM-DD format (outbound flperception.pyight or check-in date)",
+    age_group: Optional[str] = Field(
+        None, description="Age group for the product: 'kids', 'teen', 'adult', or 'senior'"
     )
-    end_date: str = Field(
-        None,
-        description="The end date in YYYY-MM-DD format (return flight or check-out date)",
+    size: Optional[Literal["XS", "S", "M", "L", "XL", "XXL"]] = Field(
+        None, description="Size of the product (XS, S, M, L, XL, XXL)"
     )
 
-    # Specific search components
-    flight: Optional[FlightSearch] = Field(
-        None,
-        description="Flight search details, required for flight or combined searches",
-    )
-    hotel: Optional[HotelSearch] = Field(
-        None,
-        description="Hotel search details, required for hotel or combined searches",
+class ReplacementDetails(BaseModel):
+    """Details for replacement product"""
+    product_name: str = Field(..., description="Name or category of the replacement product")
+    attributes: Optional['ProductAttributes'] = Field(
+        None, description="Attributes of the replacement product (color, size, gender, age)"
     )
 
+class ReturnSearch(BaseModel):
+    """Return, replace, or refund search parameters"""
+    order_id: Optional[str] = Field(None, description="The order ID for the return/replace/refund")
+    product_name: Optional[str] = Field(None, description="The product name being returned")
+    order_date: Optional[str] = Field(None, description="The order date if mentioned (e.g., '2 weeks ago')")
+    attributes: Optional['ProductAttributes'] = Field(
+        None, description="Attributes of the returned product (color, gender, age, size)"
+    )
+    return_action: Literal["return_only", "replace", "refund"] = Field(
+        "return_only", description="The type of return action: return_only, replace, or refund"
+    )
+    replacement_product: Optional[ReplacementDetails] = Field(
+        None, description="If return_action is 'replace', details of the replacement product"
+    )
+
+
+
+class BuySearch(BaseModel):
+    """Buy search parameters"""
+    product_name: str = Field(..., description="The product name or category to explore or purchase")
+    attributes: Optional[ProductAttributes] = Field(
+        None, description="Common product attributes like color, gender, size, age"
+    )
+
+
+class EntitySearch(BaseModel):
+    """Ecommerce entity search for buy or return queries"""
+    query_type: Optional[Literal["buy", "return"]] = Field(
+        None, description="The type of query: 'buy' for purchase/exploration or 'return' for return-related actions"
+    )
     enhanced_query: Optional[str] = Field(
-        None,
-        description="A standalone question that captures the user's intent and basis of which the search parameters are derived",
+        None, description="A standalone question summarizing the user's intent clearly"
     )
+    buy_info: Optional[BuySearch] = Field(None, description="Details for buy queries")
+    return_info: Optional[ReturnSearch] = Field(None, description="Details for return queries")
+
+    # # optional
+    # # 1️⃣ Pre-validation: Normalize keys from raw input
+    # @model_validator(mode="before")
+    # @classmethod
+    # def normalize_keys(cls, values):
+    #     """Handle raw LLM outputs or legacy keys (buy → buy_info)."""
+    #     if isinstance(values, dict):
+    #         if "buy" in values and "buy_info" not in values:
+    #             values["buy_info"] = values.pop("buy")
+    #         if "return" in values and "return_info" not in values:
+    #             values["return_info"] = values.pop("return")
+    #     return values
+    #
+    # # 2️⃣ Post-validation: Enforce query_type consistency
+    # @model_validator(mode="after")
+    # def ensure_query_type_consistency(self):
+    #     """Infer or default query_type after validation."""
+    #     if not self.query_type:
+    #         if self.buy_info and not self.return_info:
+    #             self.query_type = "buy"
+    #         elif self.return_info and not self.buy_info:
+    #             self.query_type = "return"
+    #         else:
+    #             self.query_type = None  # Ambiguous or empty case
+    #     return self
 
 
+# ---- PROMPT ----
 system_prompt = """
-You are an expert travel assistant. Your job is to extract structured search parameters for flight and hotel searches from a user's query, using both the current query and the chat_history for context.
+You are an expert ecommerce assistant. Your job is to extract structured search parameters for **buying products** or **returning orders** from a user's query, using the current query and chat history.
 
-**Your tasks:**
-1. Analyze the chat_history and the current user query to determine the user's intent.
-2. Build an enhanced_query: a standalone, unambiguous question that summarizes the user's intent, using chat_history to fill in any missing details.
-3. Extract the following parameters as a JSON object:
-    - search_type: "flight", "hotel", or "combined"
-    - currency: The currency for prices (e.g., USD, EUR, GBP)
-    - start_date: Outbound flight or hotel check-in date (YYYY-MM-DD)
-    - end_date: Return flight or hotel check-out date (YYYY-MM-DD)
-    - enhanced_query: The standalone question you constructed
+### Your tasks:
+1. Determine if the query is about "buy" or "return".
+2. Build an enhanced_query: a standalone, clear summary of the user's intent (using chat_history if available).
+3. Extract parameters based on query type.
 
-    For flight or combined searches, include a "flight" object:
-        - departure_id: IATA code of the departure airport (e.g., JFK)
-        - arrival_id: IATA code of the arrival airport
+### For "buy" queries:
+- query_type: "buy"
+- buy_info:
+  - product_name: main product category or name (e.g., "birthday gifts", "jeans pants")
+  - attributes:
+      - color: preferred color if mentioned (e.g., "red", "blue")
+      - gender: intended gender (male/female/unisex)
+      - age: numeric age if specified (e.g., "5" for "5-year-old")
+      - age_group: derived age category ('kids', 'teen', 'adult', 'senior')
+      - size: product size (XS, S, M, L, XL, XXL)
 
-    For hotel or combined searches, include a "hotel" object:
-        - location: Hotel location (city or area)
-        - adults: Number of adults
+### For "return" queries:
+- query_type: "return"
+- return_info:
+  - order_id: extracted if mentioned
+  - product_name: extracted if mentioned
+  - order_date: extracted if relative date is mentioned (e.g., "2 weeks ago")
+  - attributes: details of returned product (color, gender, size, age)
+  - return_action:
+      - "return_only": if just returning
+      - "replace": if returning and requesting a replacement
+      - "refund": if returning and requesting a refund
+  - replacement_product: if "replace", include:
+      - product_name
+      - attributes: color, gender, size, age of the new product
 
-**Rules:**
-- Use chat_history to resolve ambiguity or fill in missing information. If information is not available, set the value to null or "unknown".
-- Only set search_type to "combined" if the user explicitly requests both a flight and a hotel in the same query. If the request is inferred from chat_history, set search_type to "flight" or "hotel" as appropriate.
-- Always return all required fields in the output, even if some are null or "unknown".
-- Do not guess or hallucinate values. If a value cannot be determined, use null or "unknown".
-- If the user's intent is unclear, set ambiguous fields to "unknown" and explain the ambiguity in the enhanced_query.
-- search_type can only be combined if the user explicitly asks for both a flight and hotel in the original user_query.
-- Always prioritize the user's intent for search_type mentioned in the user_query and then reconsolidate the enhanced_query based on the chat_history.
+### Rules:
+- Use chat_history to fill missing details (e.g., if user says "that order").
+- If any value is not mentioned, set it to null.
+- Never hallucinate product names/order IDs.
+- Always output the JSON structure.
 
-
-**Output Format:**
+### Output Format:
 Return a single JSON object following this schema:
 {format_instructions}
-
-**Historical Context:**
-Always refer to chat_history to improve the current search if relevant or ambiguous. Use context from previous searches to fill in missing information and to improve the enhanced_query.
 """
 
-
+# ---- Perception Chain ----
 def get_perception_chain(default_llm=default_llm) -> RunnableSequence:
-    """
-    Creates and returns the perception chain for extracting travel search parameters.
-
-    Args:
-        default_llm: The default LLM to use for the chain.
-
-    Returns:
-        A LangChain runnable sequence that takes a user query and chat history,
-        and returns a TravelSearch object.
-    """
-
-    # Set up a parser
-    parser = PydanticOutputParser(pydantic_object=TravelSearch)
+    parser = PydanticOutputParser(pydantic_object=EntitySearch)
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -119,141 +149,69 @@ def get_perception_chain(default_llm=default_llm) -> RunnableSequence:
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "The user query is: {user_query}"),
         ]
-    )
+    ).partial(format_instructions=parser.get_format_instructions())
 
-    prompt = prompt.partial(format_instructions=parser.get_format_instructions())
-
-    # Create and return the chain
     return prompt | default_llm.chat_model | parser
 
 
-def process_travel_query(
+# ---- Processing Queries ----
+def process_entity_query(
     user_query: str,
     conversation_memory: ConversationMemory = None,
     perception_chain: RunnableSequence = None,
-) -> TravelSearch:
-    """
-    Process a travel query using conversation history for context.
-
-    Args:
-        user_query: The user's query about travel.
-        conversation_memory: Optional ConversationMemory object with chat history.
-        perception_chain: Optional perception chain to use. If None, a new one is created.
-
-    Returns:
-        A TravelSearch object with extracted parameters.
-    """
-    # Initialize a new conversation if one wasn't provided
+) -> EntitySearch:
     if conversation_memory is None:
         conversation_memory = ConversationMemory()
 
-    # Use provided chain or create a new one
     if perception_chain is None:
         perception_chain = get_perception_chain()
 
-    # Get chat history in the format expected by LangChain
     chat_history = conversation_memory.get_langchain_messages()
-
-    # Debug information
-    print(f"Processing query: {user_query}")
-    if chat_history:
-        print(f"Chat history length: {len(chat_history)} messages")
-    else:
-        print("No chat history yet")
-
-    # Add the current query to memory BEFORE processing
     conversation_memory.add_human_message(user_query)
-
-    # Process the query with the chain
-    result = perception_chain.invoke(
-        {"user_query": user_query, "chat_history": chat_history}
-    )
-
-    # Store the result directly using model_dump()
+    result = perception_chain.invoke({"user_query": user_query, "chat_history": chat_history})
     conversation_memory.add_ai_message(result.model_dump())
-
-    # Save the conversation
     conversation_memory.save()
 
     return result
 
 
-def test_perception_chain(
-    queries: list[str], conversation_id: str = "travel-test"
-) -> None:
-    """
-    Test the perception chain with a list of queries.
-
-    Args:
-        queries: List of queries to process in sequence.
-        conversation_id: Optional ID for the conversation memory.
-    """
-    # Create a memory object and perception chain
+# ---- Testing ----
+def test_entity_chain(queries: list[str], conversation_id: str = "ecom-test") -> list[EntitySearch]:
     memory = ConversationMemory(conversation_id=conversation_id)
     perception_chain = get_perception_chain()
 
-    results = []
+    results = []  # ✅ Collect results in a list
 
-    # Process each query in sequence
-    for i, query in enumerate(queries, 1):
-        print(f"\n=== Example {i}: {query[:50]}{'...' if len(query) > 50 else ''} ===")
-        result = process_travel_query(query, memory, perception_chain)
-        results.append(result)
-        print(f"Result: {result.model_dump()}\n")
+    for query in queries:
+        print(f"\nQuery: {query}")
+        result = process_entity_query(query, memory, perception_chain)
+        print("Result:", json.dumps(result.model_dump(), indent=2))
+        results.append(result)  # ✅ Store the result
 
-    # Print the conversation history
-    print("\n=== Conversation History ===")
-    msg_tuples = memory.get_message_tuples()
-    print("Number of messages:", len(msg_tuples))
-
-    for i, (role, content) in enumerate(msg_tuples, 1):
-        if role == "human":
-            print(f"\nHuman #{i}: {content}")
-        elif role == "ai":
-            # Try to parse the AI response as JSON
-            try:
-                response_data = json.loads(content)
-                search_type = response_data.get("search_type", "unknown")
-                print(f"AI Response #{i}: {search_type} search")
-
-                if search_type == "flight" or search_type == "combined":
-                    flight_data = response_data.get("flight", {})
-                    if flight_data:
-                        print(
-                            f"  Flight: {flight_data.get('departure_id')} → {flight_data.get('arrival_id')}"
-                        )
-                        print(
-                            f"  Dates: {response_data.get('start_date')} to {response_data.get('end_date')}"
-                        )
-
-                if search_type == "hotel" or search_type == "combined":
-                    hotel_data = response_data.get("hotel", {})
-                    if hotel_data:
-                        print(f"  Hotel Location: {hotel_data.get('location')}")
-                        print(
-                            f"  Dates: {response_data.get('start_date')} to {response_data.get('end_date')}"
-                        )
-                        print(f"  Adults: {hotel_data.get('adults')}")
-            except json.JSONDecodeError:
-                # If not valid JSON, just print the first 100 characters
-                print(
-                    f"AI Response #{i}: {content[:100]}..."
-                    if len(content) > 100
-                    else f"AI Response #{i}: {content}"
-                )
-
-    return results
+    return results  # ✅ Return results list
 
 
 if __name__ == "__main__":
-    # Demo queries to test the perception chain
     test_queries = [
-        "I want to search for flights from New York to Los Angeles on 2025-05-01 with return on 2025-05-05",
-        # "I need a hotel in Los Angeles for 2 adults from May 1 to May 5, 2025",
-        # "I want to search for flights from New York to Los Angeles on 2025-05-01 "
-        # "with return on 2025-05-05 and a hotel for 2 adults in Los Angeles for the same dates",
-    ]
+        # return
+        "I want to return an order.",
+        "That order which I ordered 2 weeks back.",
+        "I want to return order ID 98765, the blue jeans size L I bought for my dad",
+        "I want to return my size M red shoes and get a refund",
+        "I want to return my jeans and replace them with black chinos size L",
 
-    # Run the test
-    results = test_perception_chain(test_queries, "travel-session")
-    check=1
+        # neutral
+        "I ordered a shoe.",
+        "The orderID is 45363.",
+
+        #buy
+        "I need pink shoes for my 5-year-old daughter",
+        "I want to buy a blue shirt for men",
+        # "I want to explore birthday gifts.",
+        # "I want to buy pens.",
+        # "I need to look at jeans pants.",
+        # "I am looking for half sleeve shirts.",
+        # "I want to buy a red t-shirt size M for my 12-year-old son",
+    ]
+    results = test_entity_chain(test_queries, "ecom-session")
+    CHECK = 1

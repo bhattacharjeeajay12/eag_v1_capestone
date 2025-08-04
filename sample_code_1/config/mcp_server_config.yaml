@@ -1,0 +1,183 @@
+# MCP Server Configuration for E-Commerce Multi-Agent System
+# This file defines external tool providers that agents can access
+
+mcp_servers:
+  # ============================================================================
+  # DATABASE CONNECTOR - Product and Order Database Operations
+  # ============================================================================
+  - id: database_connector
+    script: mcp_servers/database_connector.py
+    cwd: ./mcp_servers
+    transport: stdio
+    description: "Database operations for products, orders, and customer data"
+    tools:
+      - search_products
+      - get_product_details
+      - get_order_by_id
+      - get_customer_orders
+      - search_orders
+      - get_customer_profile
+    connection:
+      type: "postgresql"
+      host: "localhost"
+      port: 5432
+      database: "ecommerce_db"
+      pool_size: 10
+      timeout: 30
+
+  # ============================================================================
+  # PAYMENT PROCESSOR - Payment Status and Transaction Management
+  # ============================================================================
+  - id: payment_processor
+    script: mcp_servers/payment_processor.py
+    cwd: ./mcp_servers
+    transport: stdio
+    description: "Payment status checks and transaction processing"
+    tools:
+      - get_payment_status
+      - get_transaction_history
+      - process_refund
+      - validate_payment_method
+      - get_payment_methods
+    connection:
+      type: "stripe"
+      api_key_env: "STRIPE_API_KEY"
+      webhook_secret_env: "STRIPE_WEBHOOK_SECRET"
+      timeout: 45
+
+  # ============================================================================
+  # INVENTORY SYSTEM - Stock Management and Availability
+  # ============================================================================
+  - id: inventory_system
+    script: mcp_servers/inventory_system.py
+    cwd: ./mcp_servers
+    transport: stdio
+    description: "Inventory and stock management operations"
+    tools:
+      - check_stock_availability
+      - get_inventory_levels
+      - reserve_inventory
+      - update_stock_levels
+      - get_supplier_info
+      - get_restock_estimates
+    connection:
+      type: "redis"
+      host: "localhost"
+      port: 6379
+      database: 1
+      cache_ttl: 300
+
+  # ============================================================================
+  # EMAIL SYSTEM - Customer Communication and Notifications
+  # ============================================================================
+  - id: email_system
+    script: mcp_servers/email_system.py
+    cwd: ./mcp_servers
+    transport: stdio
+    description: "Email notifications and customer communication"
+    tools:
+      - send_customer_email
+      - send_order_confirmation
+      - send_shipping_update
+      - send_promotional_email
+      - get_email_templates
+      - track_email_engagement
+    connection:
+      type: "sendgrid"
+      api_key_env: "SENDGRID_API_KEY"
+      from_email: "noreply@ecommerce.com"
+      templates_dir: "./email_templates"
+
+  # ============================================================================
+  # SHIPPING TRACKER - Delivery Status and Tracking
+  # ============================================================================
+  - id: shipping_tracker
+    script: mcp_servers/shipping_tracker.py
+    cwd: ./mcp_servers
+    transport: stdio
+    description: "Shipping and delivery tracking services"
+    tools:
+      - get_tracking_info
+      - calculate_shipping_cost
+      - get_delivery_estimates
+      - create_shipping_label
+      - get_carrier_info
+    connection:
+      type: "fedex"
+      api_key_env: "FEDEX_API_KEY"
+      account_number_env: "FEDEX_ACCOUNT_NUMBER"
+      meter_number_env: "FEDEX_METER_NUMBER"
+
+  # ============================================================================
+  # ANALYTICS ENGINE - Customer Behavior and Performance Metrics
+  # ============================================================================
+  - id: analytics_engine
+    script: mcp_servers/analytics_engine.py
+    cwd: ./mcp_servers
+    transport: stdio
+    description: "Customer behavior analysis and business metrics"
+    tools:
+      - get_customer_behavior
+      - get_product_performance
+      - get_sales_metrics
+      - get_conversion_rates
+      - get_customer_lifetime_value
+      - get_recommendation_accuracy
+    connection:
+      type: "bigquery"
+      project_id_env: "GOOGLE_CLOUD_PROJECT"
+      credentials_env: "GOOGLE_APPLICATION_CREDENTIALS"
+      dataset: "ecommerce_analytics"
+
+# ============================================================================
+# GLOBAL MCP SETTINGS
+# ============================================================================
+global_settings:
+  # Connection pooling and timeout settings
+  connection_pool_size: 20
+  default_timeout: 30
+  retry_attempts: 3
+  retry_delay: 1.0
+  
+  # Security settings
+  enable_ssl: true
+  verify_certificates: true
+  
+  # Logging and monitoring
+  enable_request_logging: true
+  enable_performance_monitoring: true
+  log_level: "INFO"
+  
+  # Rate limiting
+  requests_per_minute: 100
+  burst_limit: 20
+
+# ============================================================================
+# SERVER DEPENDENCIES AND STARTUP ORDER
+# ============================================================================
+startup_order:
+  - database_connector      # Core database must be first
+  - inventory_system        # Inventory depends on database
+  - payment_processor       # Payment can start independently
+  - email_system           # Email system can start independently
+  - shipping_tracker       # Shipping can start independently
+  - analytics_engine       # Analytics depends on database
+
+# ============================================================================
+# HEALTH CHECK CONFIGURATION
+# ============================================================================
+health_checks:
+  enabled: true
+  interval: 30  # seconds
+  timeout: 10   # seconds
+  failure_threshold: 3
+  success_threshold: 2
+  
+  # Health check endpoints for each server
+  endpoints:
+    database_connector: "SELECT 1"
+    payment_processor: "ping"
+    inventory_system: "ping"
+    email_system: "ping"
+    shipping_tracker: "ping"
+    analytics_engine: "ping" 

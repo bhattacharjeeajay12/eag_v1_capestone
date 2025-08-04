@@ -1,0 +1,162 @@
+# E-Commerce Multi-Agent System Configuration
+# This file defines all agents, their capabilities, and tool access permissions
+
+agents:
+  # ============================================================================
+  # CORE INTENT UNDERSTANDING AGENT
+  # ============================================================================
+  CustomerIntentAgent:
+    prompt_file: "prompts/customer_intent_prompt.txt"
+    model: "gemini"
+    mcp_servers: []  # No external tools needed for intent analysis
+    description: "Analyzes customer queries to extract intent and entities"
+    capabilities:
+      - intent_classification
+      - entity_extraction
+      - context_analysis
+    max_retries: 3
+    timeout: 30
+
+  # ============================================================================
+  # PRODUCT AND INVENTORY AGENTS
+  # ============================================================================
+  ProductSearchAgent:
+    prompt_file: "prompts/product_search_prompt.txt"
+    model: "gemini"
+    mcp_servers: ["database_connector", "inventory_system"]
+    description: "Searches product database and inventory for matching items"
+    capabilities:
+      - product_search
+      - inventory_check
+      - price_comparison
+      - category_filtering
+    max_retries: 2
+    timeout: 45
+
+  RecommendationAgent:
+    prompt_file: "prompts/recommendation_prompt.txt"
+    model: "gemini"
+    mcp_servers: ["database_connector"]
+    description: "Generates personalized product recommendations"
+    capabilities:
+      - collaborative_filtering
+      - content_based_recommendations
+      - cross_selling
+      - up_selling
+    max_retries: 2
+    timeout: 40
+
+  # ============================================================================
+  # ORDER AND PAYMENT AGENTS
+  # ============================================================================
+  OrderStatusAgent:
+    prompt_file: "prompts/order_status_prompt.txt"
+    model: "gemini"
+    mcp_servers: ["database_connector", "payment_processor"]
+    description: "Checks order status and payment information"
+    capabilities:
+      - order_lookup
+      - payment_status
+      - shipping_tracking
+      - order_history
+    max_retries: 3
+    timeout: 35
+
+  # ============================================================================
+  # CUSTOMER SERVICE AGENTS
+  # ============================================================================
+  ComplaintHandlerAgent:
+    prompt_file: "prompts/complaint_handler_prompt.txt"
+    model: "gemini"
+    mcp_servers: ["database_connector", "email_system"]
+    description: "Handles customer complaints and generates resolution plans"
+    capabilities:
+      - complaint_analysis
+      - resolution_planning
+      - escalation_handling
+      - follow_up_scheduling
+    max_retries: 2
+    timeout: 60
+
+  SentimentAnalysisAgent:
+    prompt_file: "prompts/sentiment_analysis_prompt.txt"
+    model: "gemini"
+    mcp_servers: []  # No external tools needed
+    description: "Analyzes customer sentiment and emotional state"
+    capabilities:
+      - sentiment_scoring
+      - emotion_detection
+      - urgency_assessment
+      - tone_analysis
+    max_retries: 2
+    timeout: 25
+
+  # ============================================================================
+  # OUTPUT FORMATTING AGENT
+  # ============================================================================
+  ResponseFormatterAgent:
+    prompt_file: "prompts/response_formatter_prompt.txt"
+    model: "gemini"
+    mcp_servers: []  # No external tools needed
+    description: "Formats final response for customer consumption"
+    capabilities:
+      - response_formatting
+      - tone_adjustment
+      - multilingual_support
+      - accessibility_features
+    max_retries: 1
+    timeout: 20
+
+  # ============================================================================
+  # PLANNING AND ORCHESTRATION AGENT
+  # ============================================================================
+  PlannerAgent:
+    prompt_file: "prompts/planner_prompt.txt"
+    model: "gemini"
+    mcp_servers: []  # No external tools needed for planning
+    description: "Creates execution plans based on customer intent"
+    capabilities:
+      - flow_planning
+      - agent_selection
+      - dependency_mapping
+      - optimization
+    max_retries: 2
+    timeout: 30
+
+# ============================================================================
+# GLOBAL AGENT SETTINGS
+# ============================================================================
+global_settings:
+  default_model: "gemini"
+  max_concurrent_agents: 4
+  default_timeout: 30
+  retry_delay: 1.0
+  max_graph_depth: 10
+  enable_caching: true
+  cache_ttl: 3600  # 1 hour
+
+# ============================================================================
+# AGENT DEPENDENCIES AND CONSTRAINTS
+# ============================================================================
+agent_constraints:
+  # CustomerIntentAgent must always be first
+  CustomerIntentAgent:
+    required_position: "first"
+    max_instances: 1
+    
+  # ResponseFormatterAgent must always be last
+  ResponseFormatterAgent:
+    required_position: "last"
+    max_instances: 1
+    
+  # SentimentAnalysisAgent can run in parallel with others
+  SentimentAnalysisAgent:
+    parallel_execution: true
+    max_instances: 2
+    
+  # ProductSearchAgent and RecommendationAgent can run together
+  ProductSearchAgent:
+    parallel_with: ["RecommendationAgent"]
+    
+  RecommendationAgent:
+    parallel_with: ["ProductSearchAgent"] 

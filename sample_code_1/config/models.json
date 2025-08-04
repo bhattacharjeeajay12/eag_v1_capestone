@@ -1,0 +1,170 @@
+{
+  "defaults": {
+    "text_generation": "gemini",
+    "embedding": "nomic",
+    "vision": "gemini-vision"
+  },
+  "models": {
+    "gemini": {
+      "type": "gemini",
+      "model": "gemini-2.0-flash",
+      "embedding_model": "models/embedding-001",
+      "vision_model": "gemini-2.0-flash-exp",
+      "api_key_env": "GEMINI_API_KEY",
+      "max_tokens": 8192,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "timeout": 60,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 60,
+        "tokens_per_minute": 15000
+      }
+    },
+    "gemini-pro": {
+      "type": "gemini",
+      "model": "gemini-1.5-pro",
+      "embedding_model": "models/embedding-001",
+      "api_key_env": "GEMINI_API_KEY",
+      "max_tokens": 32768,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "timeout": 120,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 60,
+        "tokens_per_minute": 15000
+      }
+    },
+    "openai-gpt4": {
+      "type": "openai",
+      "model": "gpt-4",
+      "embedding_model": "text-embedding-3-small",
+      "api_key_env": "OPENAI_API_KEY",
+      "max_tokens": 8192,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "timeout": 60,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 500,
+        "tokens_per_minute": 90000
+      }
+    },
+    "openai-gpt35": {
+      "type": "openai",
+      "model": "gpt-3.5-turbo",
+      "embedding_model": "text-embedding-3-small",
+      "api_key_env": "OPENAI_API_KEY",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "timeout": 60,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 3500,
+        "tokens_per_minute": 90000
+      }
+    },
+    "anthropic-claude": {
+      "type": "anthropic",
+      "model": "claude-3-sonnet-20240229",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "timeout": 60,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 50,
+        "tokens_per_minute": 40000
+      }
+    },
+    "ollama-llama3": {
+      "type": "ollama",
+      "model": "llama3:8b",
+      "embedding_model": "llama3:8b",
+      "url": {
+        "generate": "http://localhost:11434/api/generate",
+        "embed": "http://localhost:11434/api/embeddings"
+      },
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "timeout": 120,
+      "retry_attempts": 2,
+      "rate_limit": {
+        "requests_per_minute": 100,
+        "tokens_per_minute": 10000
+      }
+    },
+    "ollama-mistral": {
+      "type": "ollama",
+      "model": "mistral:7b",
+      "embedding_model": "mistral:7b",
+      "url": {
+        "generate": "http://localhost:11434/api/generate",
+        "embed": "http://localhost:11434/api/embeddings"
+      },
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "timeout": 120,
+      "retry_attempts": 2,
+      "rate_limit": {
+        "requests_per_minute": 100,
+        "tokens_per_minute": 10000
+      }
+    },
+    "nomic": {
+      "type": "huggingface",
+      "model": "nomic-ai/nomic-embed-text-v1",
+      "embedding_dimension": 768,
+      "api_key_env": "HUGGINGFACE_API_KEY",
+      "timeout": 30,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 100,
+        "tokens_per_minute": 50000
+      }
+    },
+    "cohere": {
+      "type": "cohere",
+      "model": "command",
+      "embedding_model": "embed-english-v3.0",
+      "api_key_env": "COHERE_API_KEY",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "timeout": 60,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 100,
+        "tokens_per_minute": 100000
+      }
+    }
+  },
+  "model_selection": {
+    "intent_analysis": ["gemini", "openai-gpt4", "anthropic-claude"],
+    "product_search": ["gemini", "openai-gpt35", "ollama-llama3"],
+    "order_processing": ["gemini", "openai-gpt4", "anthropic-claude"],
+    "customer_service": ["gemini", "openai-gpt4", "anthropic-claude"],
+    "recommendations": ["gemini", "openai-gpt35", "ollama-mistral"],
+    "sentiment_analysis": ["gemini", "openai-gpt35", "ollama-llama3"],
+    "response_formatting": ["gemini", "openai-gpt35", "ollama-mistral"]
+  },
+  "fallback_strategy": {
+    "primary": "gemini",
+    "secondary": "openai-gpt35",
+    "tertiary": "ollama-llama3",
+    "max_fallbacks": 2
+  },
+  "cost_optimization": {
+    "enable_cost_tracking": true,
+    "budget_limits": {
+      "daily": 100.0,
+      "monthly": 1000.0
+    },
+    "preferred_models": ["ollama-llama3", "ollama-mistral", "gemini"],
+    "expensive_models": ["openai-gpt4", "anthropic-claude"]
+  }
+} 

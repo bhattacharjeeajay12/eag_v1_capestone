@@ -19,11 +19,11 @@ if __name__ == "__main__":
         # buy
         "I need pink shoes for my 5-year-old daughter",
         "I want to buy a blue shirt for men",
-        "I want to explore birthday gifts.",
-        "I want to buy pens.",
-        "I need to look at jeans pants.",
-        "I am looking for half sleeve shirts.",
-        "I want to buy a red t-shirt size M for my 12-year-old son",
+        # "I want to explore birthday gifts.",
+        # "I want to buy pens.",
+        # "I need to look at jeans pants.",
+        # "I am looking for half sleeve shirts.",
+        # "I want to buy a red t-shirt size M for my 12-year-old son",
     ]
 
     agent = BuyAgent()
